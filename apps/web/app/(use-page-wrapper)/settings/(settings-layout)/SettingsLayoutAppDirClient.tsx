@@ -44,6 +44,7 @@ const getTabs = (orgBranding: OrganizationBranding | null) => {
         { name: "appearance", href: "/settings/my-account/appearance", trackingMetadata: { section: "my_account", page: "appearance" } },
         { name: "out_of_office", href: "/settings/my-account/out-of-office", trackingMetadata: { section: "my_account", page: "out_of_office" } },
         { name: "push_notifications", href: "/settings/my-account/push-notifications", trackingMetadata: { section: "my_account", page: "push_notifications" } },
+        { name: "features", href: "/settings/my-account/features", trackingMetadata: { section: "my_account", page: "features" } },
         // TODO
         // { name: "referrals", href: "/settings/my-account/referrals" },
       ],
@@ -90,6 +91,11 @@ const getTabs = (orgBranding: OrganizationBranding | null) => {
           name: "general",
           href: "/settings/organizations/general",
           trackingMetadata: { section: "organization", page: "general" },
+        },
+        {
+          name: "features",
+          href: "/settings/organizations/features",
+          trackingMetadata: { section: "organization", page: "features" },
         },
         {
           name: "guest_notifications",
@@ -528,6 +534,14 @@ const TeamListCollapsible = ({ teamFeatures }: { teamFeatures?: Record<number, T
                         href={`/settings/teams/${team.id}/settings`}
                         textClassNames="px-3 text-emphasis font-medium text-sm"
                         trackingMetadata={{ section: "team", page: "settings", teamId: team.id }}
+                        className="px-2! me-5 h-7 w-auto"
+                        disableChevron
+                      />
+                      <VerticalTabItem
+                        name={t("features")}
+                        href={`/settings/teams/${team.id}/features`}
+                        textClassNames="px-3 text-emphasis font-medium text-sm"
+                        trackingMetadata={{ section: "team", page: "features", teamId: team.id }}
                         className="px-2! me-5 h-7 w-auto"
                         disableChevron
                       />

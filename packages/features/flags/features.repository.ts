@@ -112,6 +112,7 @@ export class FeaturesRepository implements IFeaturesRepository {
   /**
    * Checks if a specific user has access to a feature.
    * Checks both direct user feature assignments and team-based feature access.
+   * Now also checks the `enabled` column for explicit opt-in/opt-out.
    * @param userId - The ID of the user to check
    * @param slug - The feature identifier to check
    * @returns Promise<boolean> - True if the user has access to the feature, false otherwise
@@ -128,6 +129,7 @@ export class FeaturesRepository implements IFeaturesRepository {
         where: {
           userId,
           featureId: slug,
+          enabled: true, // Only consider enabled features
         },
       });
       if (userHasFeature) return true;
@@ -145,6 +147,7 @@ export class FeaturesRepository implements IFeaturesRepository {
   /**
    * Checks if a specific user has access to a feature, ignoring hierarchical (parent) teams.
    * Only checks direct user assignments and direct team memberships — does not traverse parents.
+   * Now also checks the `enabled` column for explicit opt-in/opt-out.
    * @param userId - The ID of the user to check
    * @param slug - The feature identifier to check
    * @returns Promise<boolean> - True if the user has direct or same-level team access to the feature
@@ -160,6 +163,7 @@ export class FeaturesRepository implements IFeaturesRepository {
         where: {
           userId,
           featureId: slug,
+          enabled: true, // Only consider enabled features
         },
       });
       if (userHasFeature) return true;
@@ -178,6 +182,7 @@ export class FeaturesRepository implements IFeaturesRepository {
 
   /**
    * Private helper method to check if a user belongs to any team that has access to a feature.
+   * Now also checks the `enabled` column for explicit opt-in/opt-out.
    * @param userId - The ID of the user to check
    * @param slug - The feature identifier to check
    * @returns Promise<boolean> - True if the user belongs to a team with the feature, false otherwise
@@ -192,7 +197,7 @@ export class FeaturesRepository implements IFeaturesRepository {
           SELECT DISTINCT t.id, t."parentId",
             CASE WHEN EXISTS (
               SELECT 1 FROM "TeamFeatures" tf
-              WHERE tf."teamId" = t.id AND tf."featureId" = ${slug}
+              WHERE tf."teamId" = t.id AND tf."featureId" = ${slug} AND tf."enabled" = true
             ) THEN true ELSE false END as has_feature
           FROM "Team" t
           INNER JOIN "Membership" m ON m."teamId" = t.id
@@ -204,7 +209,7 @@ export class FeaturesRepository implements IFeaturesRepository {
           SELECT DISTINCT p.id, p."parentId",
             CASE WHEN EXISTS (
               SELECT 1 FROM "TeamFeatures" tf
-              WHERE tf."teamId" = p.id AND tf."featureId" = ${slug}
+              WHERE tf."teamId" = p.id AND tf."featureId" = ${slug} AND tf."enabled" = true
             ) THEN true ELSE false END as has_feature
           FROM "Team" p
           INNER JOIN TeamHierarchy c ON p.id = c."parentId"
@@ -227,6 +232,7 @@ export class FeaturesRepository implements IFeaturesRepository {
   /**
    * Checks if a user belongs to any direct team that has access to a feature.
    * This version ignores parent/child team relationships — no recursion or hierarchy traversal.
+   * Now also checks the `enabled` column for explicit opt-in/opt-out.
    * @param userId - The ID of the user to check
    * @param slug - The feature identifier to check
    * @returns Promise<boolean> - True if the user belongs to a team with the feature (direct only)
@@ -246,6 +252,7 @@ export class FeaturesRepository implements IFeaturesRepository {
             FROM "TeamFeatures" tf
             WHERE tf."teamId" = t.id
               AND tf."featureId" = ${slug}
+              AND tf."enabled" = true
           )
         LIMIT 1;
       `;
@@ -278,9 +285,13 @@ export class FeaturesRepository implements IFeaturesRepository {
         create: {
           teamId,
           featureId,
+          enabled: true,
           assignedBy,
         },
-        update: {},
+        update: {
+          enabled: true,
+          assignedBy,
+        },
       });
       // Clear cache when features are modified
       this.clearCache();
@@ -291,8 +302,121 @@ export class FeaturesRepository implements IFeaturesRepository {
   }
 
   /**
+   * Sets the enabled status of a feature for a specific user.
+   * @param userId - The ID of the user
+   * @param featureId - The feature identifier
+   * @param enabled - Whether the feature should be enabled
+   * @param assignedBy - The user or what assigned the feature
+   * @returns Promise<void>
+   * @throws Error if the operation fails
+   */
+  async setUserFeatureEnabled(
+    userId: number,
+    featureId: string,
+    enabled: boolean,
+    assignedBy: string
+  ): Promise<void> {
+    try {
+      await this.prismaClient.userFeatures.upsert({
+        where: {
+          userId_featureId: {
+            userId,
+            featureId,
+          },
+        },
+        create: {
+          userId,
+          featureId,
+          enabled,
+          assignedBy,
+        },
+        update: {
+          enabled,
+          assignedBy,
+        },
+      });
+      this.clearCache();
+    } catch (err) {
+      captureException(err);
+      throw err;
+    }
+  }
+
+  /**
+   * Sets the enabled status of a feature for a specific team.
+   * @param teamId - The ID of the team
+   * @param featureId - The feature identifier
+   * @param enabled - Whether the feature should be enabled
+   * @param assignedBy - The user or what assigned the feature
+   * @returns Promise<void>
+   * @throws Error if the operation fails
+   */
+  async setTeamFeatureEnabled(
+    teamId: number,
+    featureId: string,
+    enabled: boolean,
+    assignedBy: string
+  ): Promise<void> {
+    try {
+      await this.prismaClient.teamFeatures.upsert({
+        where: {
+          teamId_featureId: {
+            teamId,
+            featureId,
+          },
+        },
+        create: {
+          teamId,
+          featureId,
+          enabled,
+          assignedBy,
+        },
+        update: {
+          enabled,
+          assignedBy,
+        },
+      });
+      this.clearCache();
+    } catch (err) {
+      captureException(err);
+      throw err;
+    }
+  }
+
+  /**
+   * Gets the user feature record for a specific user and feature.
+   * @param userId - The ID of the user
+   * @param featureId - The feature identifier
+   * @returns Promise<UserFeatures | null>
+   */
+  async getUserFeature(userId: number, featureId: string) {
+    return this.prismaClient.userFeatures.findFirst({
+      where: {
+        userId,
+        featureId,
+      },
+    });
+  }
+
+  /**
+   * Gets the team feature record for a specific team and feature.
+   * @param teamId - The ID of the team
+   * @param featureId - The feature identifier
+   * @returns Promise<TeamFeatures | null>
+   */
+  async getTeamFeature(teamId: number, featureId: string) {
+    return this.prismaClient.teamFeatures.findFirst({
+      where: {
+        teamId,
+        featureId,
+      },
+    });
+  }
+
+  /**
    * Checks if a team or any of its ancestors has access to a specific feature.
    * Uses a recursive CTE raw SQL query for performance.
+   * Now also checks the `enabled` column for explicit opt-in/opt-out.
    * @param teamId - The ID of the team to start the check from
    * @param featureId - The feature identifier to check
    * @returns Promise<boolean> - True if the team or any ancestor has the feature, false otherwise
@@ -300,7 +424,7 @@ export class FeaturesRepository implements IFeaturesRepository {
    */
   async checkIfTeamHasFeature(teamId: number, featureId: keyof AppFlags): Promise<boolean> {
     try {
-      // Early return if team has feature directly assigned
+      // Early return if team has feature directly assigned and enabled
       const teamHasFeature = await this.prismaClient.teamFeatures.findUnique({
         where: {
           teamId_featureId: {
@@ -309,7 +433,7 @@ export class FeaturesRepository implements IFeaturesRepository {
           },
         },
       });
-      if (teamHasFeature) return true;
+      if (teamHasFeature && teamHasFeature.enabled) return true;
 
       const query = Prisma.sql`
         WITH RECURSIVE TeamHierarchy AS (
@@ -317,7 +441,7 @@ export class FeaturesRepository implements IFeaturesRepository {
           SELECT id, "parentId",
             CASE WHEN EXISTS (
               SELECT 1 FROM "TeamFeatures" tf
-              WHERE tf."teamId" = id AND tf."featureId" = ${featureId}
+              WHERE tf."teamId" = id AND tf."featureId" = ${featureId} AND tf."enabled" = true
             ) THEN true ELSE false END as has_feature
           FROM "Team"
           WHERE id = ${teamId}
@@ -328,7 +452,7 @@ export class FeaturesRepository implements IFeaturesRepository {
           SELECT p.id, p."parentId",
             CASE WHEN EXISTS (
               SELECT 1 FROM "TeamFeatures" tf
-              WHERE tf."teamId" = p.id AND tf."featureId" = ${featureId}
+              WHERE tf."teamId" = p.id AND tf."featureId" = ${featureId} AND tf."enabled" = true
             ) THEN true ELSE false END as has_feature
           FROM "Team" p
           INNER JOIN TeamHierarchy c ON p.id = c."parentId"
@@ -359,7 +483,10 @@ export class FeaturesRepository implements IFeaturesRepository {
       if (!isGloballyEnabled) return [];
 
       const rows = await this.prismaClient.teamFeatures.findMany({
-        where: { featureId: slug },
+        where: {
+          featureId: slug,
+          enabled: true, // Only return teams with feature enabled
+        },
         select: { teamId: true },
         orderBy: { teamId: "asc" },
       });
@@ -369,5 +496,47 @@ export class FeaturesRepository implements IFeaturesRepository {
       captureException(err);
       throw err;
     }
+  }
+
+  /**
+   * Gets all user features for a specific user.
+   * @param userId - The ID of the user
+   * @returns Promise<UserFeatures[]>
+   */
+  async getUserFeatures(userId: number) {
+    return this.prismaClient.userFeatures.findMany({
+      where: { userId },
+      include: {
+        feature: {
+          select: {
+            slug: true,
+            enabled: true,
+            description: true,
+            type: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Gets all team features for a specific team.
+   * @param teamId - The ID of the team
+   * @returns Promise<TeamFeatures[]>
+   */
+  async getTeamFeaturesWithDetails(teamId: number) {
+    return this.prismaClient.teamFeatures.findMany({
+      where: { teamId },
+      include: {
+        feature: {
+          select: {
+            slug: true,
+            enabled: true,
+            description: true,
+            type: true,
+          },
+        },
+      },
+    });
   }
 }

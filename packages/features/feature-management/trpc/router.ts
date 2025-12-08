@@ -1,13 +1,13 @@
+import type { PrismaClient } from "@calcom/prisma";
 import { z } from "zod";
 
 import { FeaturesRepository } from "@calcom/features/flags/features.repository";
-import { prisma } from "@calcom/prisma";
 import authedProcedure from "@calcom/trpc/server/procedures/authedProcedure";
 import { router } from "@calcom/trpc/server/trpc";
 
 import { FeatureManagementService } from "../services/FeatureManagementService";
 
-const getFeatureManagementService = () => {
+const getFeatureManagementService = (prisma: PrismaClient) => {
   const featuresRepository = new FeaturesRepository(prisma);
   return new FeatureManagementService(featuresRepository);
 };
@@ -17,7 +17,7 @@ export const featureManagementRouter = router({
    * List all features for the current user with their enabled status.
    */
   listForUser: authedProcedure.query(async ({ ctx }) => {
-    const service = getFeatureManagementService();
+    const service = getFeatureManagementService(ctx.prisma);
     return service.listFeaturesForUser(ctx.user.id);
   }),
 
@@ -30,8 +30,8 @@ export const featureManagementRouter = router({
         teamId: z.number(),
       })
     )
-    .query(async ({ input }) => {
-      const service = getFeatureManagementService();
+    .query(async ({ ctx, input }) => {
+      const service = getFeatureManagementService(ctx.prisma);
       return service.listFeaturesForTeam(input.teamId);
     }),
 
@@ -44,8 +44,8 @@ export const featureManagementRouter = router({
         organizationId: z.number(),
       })
     )
-    .query(async ({ input }) => {
-      const service = getFeatureManagementService();
+    .query(async ({ ctx, input }) => {
+      const service = getFeatureManagementService(ctx.prisma);
       return service.listFeaturesForOrganization(input.organizationId);
     }),
 
@@ -61,7 +61,7 @@ export const featureManagementRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = getFeatureManagementService();
+      const service = getFeatureManagementService(ctx.prisma);
       await service.setUserFeatureEnabled(
         ctx.user.id,
         input.featureSlug,
@@ -84,7 +84,7 @@ export const featureManagementRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = getFeatureManagementService();
+      const service = getFeatureManagementService(ctx.prisma);
       await service.setTeamFeatureEnabled(
         input.teamId,
         input.featureSlug,
@@ -107,7 +107,7 @@ export const featureManagementRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = getFeatureManagementService();
+      const service = getFeatureManagementService(ctx.prisma);
       await service.setOrganizationFeatureEnabled(
         input.organizationId,
         input.featureSlug,
@@ -121,7 +121,7 @@ export const featureManagementRouter = router({
    * Get features that are eligible for opt-in via the banner system.
    */
   getEligibleOptInFeatures: authedProcedure.query(async ({ ctx }) => {
-    const service = getFeatureManagementService();
+    const service = getFeatureManagementService(ctx.prisma);
     return service.getEligibleOptInFeatures(ctx.user.id);
   }),
 
@@ -135,7 +135,7 @@ export const featureManagementRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const service = getFeatureManagementService();
+      const service = getFeatureManagementService(ctx.prisma);
       return service.hasUserOptedIn(ctx.user.id, input.featureSlug);
     }),
 
@@ -150,7 +150,7 @@ export const featureManagementRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = getFeatureManagementService();
+      const service = getFeatureManagementService(ctx.prisma);
 
       if (!service.isFeatureInOptInAllowlist(input.featureSlug)) {
         throw new Error("Feature is not available for opt-in");

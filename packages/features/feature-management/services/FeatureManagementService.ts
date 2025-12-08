@@ -27,16 +27,18 @@ export class FeatureManagementService {
 
   /**
    * Get all features for a user with their enabled status.
+   * Uses row-existence semantics: if a UserFeatures row exists, the feature is enabled.
    */
   async listFeaturesForUser(userId: number): Promise<FeatureWithStatus[]> {
     const userFeatures = await this.featuresRepository.getUserFeatures(userId);
     const allFeatures = await this.featuresRepository.getAllFeatures();
 
     return allFeatures.map((feature) => {
+      // Row existence = feature enabled for user
       const userFeature = userFeatures.find((uf) => uf.feature.slug === feature.slug);
       return {
         slug: feature.slug,
-        enabled: userFeature?.enabled ?? false,
+        enabled: !!userFeature, // Row exists = enabled
         globallyEnabled: feature.enabled,
         description: feature.description,
         type: feature.type,
@@ -46,16 +48,18 @@ export class FeatureManagementService {
 
   /**
    * Get all features for a team with their enabled status.
+   * Uses row-existence semantics: if a TeamFeatures row exists, the feature is enabled.
    */
   async listFeaturesForTeam(teamId: number): Promise<FeatureWithStatus[]> {
     const teamFeatures = await this.featuresRepository.getTeamFeaturesWithDetails(teamId);
     const allFeatures = await this.featuresRepository.getAllFeatures();
 
     return allFeatures.map((feature) => {
+      // Row existence = feature enabled for team
       const teamFeature = teamFeatures.find((tf) => tf.feature.slug === feature.slug);
       return {
         slug: feature.slug,
-        enabled: teamFeature?.enabled ?? false,
+        enabled: !!teamFeature, // Row exists = enabled
         globallyEnabled: feature.enabled,
         description: feature.description,
         type: feature.type,
@@ -112,7 +116,7 @@ export class FeatureManagementService {
    * Get features that are eligible for opt-in via the banner system.
    * A feature is eligible if:
    * 1. It's in the opt-in allowlist
-   * 2. The user hasn't already opted in (UserFeatures.enabled !== true)
+   * 2. The user hasn't already opted in (no UserFeatures row exists)
    * 3. The feature is globally enabled
    */
   async getEligibleOptInFeatures(userId: number): Promise<EligibleOptInFeature[]> {
@@ -125,7 +129,8 @@ export class FeatureManagementService {
 
       const userFeature = await this.featuresRepository.getUserFeature(userId, slug);
 
-      if (userFeature && userFeature.enabled === true) {
+      // Row exists = user has already opted in
+      if (userFeature) {
         continue;
       }
 
@@ -161,9 +166,10 @@ export class FeatureManagementService {
 
   /**
    * Check if a user has opted into a specific feature.
+   * Uses row-existence semantics: if a UserFeatures row exists, the user has opted in.
    */
   async hasUserOptedIn(userId: number, featureSlug: string): Promise<boolean> {
     const userFeature = await this.featuresRepository.getUserFeature(userId, featureSlug);
-    return userFeature?.enabled === true;
+    return !!userFeature; // Row exists = opted in
   }
 }
